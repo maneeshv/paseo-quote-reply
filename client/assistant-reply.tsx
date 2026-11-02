@@ -1,32 +1,40 @@
-import { useAgent, usePaseo, type PluginTimelineItemProps } from "@getpaseo/plugin/client";
-import { Icon, Markdown, Modal } from "@getpaseo/plugin/client/ui";
+import { useAgent, usePaseo, type PluginButtonIconProps } from "@getpaseo/plugin/client";
+import { Icon, Modal } from "@getpaseo/plugin/client/ui";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Pressable, Text, View } from "react-native";
-import { observeMessageSelection, type MessageSelection } from "@/client/web";
+import { Modal as RNModal, Pressable, Text, View } from "react-native";
+import { observeNativeMessageSelection, type NativeMessageSelection } from "@/client/web";
 import type { ReplyDraft } from "@/client/new-chat";
 import { ReplyForm } from "@/client/reply-form";
 import { formatQuoteReply } from "@/shared/quote";
 
-export interface AssistantMessageData {
-  text: string;
-  messageId?: string;
-}
-
-export type AssistantMessageProps = PluginTimelineItemProps<AssistantMessageData> & {
+export type SelectionReplyProps = PluginButtonIconProps & {
   /** Opens the plugin's new-chat reply screen. Injected by the client entry. */
   openNewChat?: (draft: ReplyDraft) => void;
 };
 
-export function AssistantMessage({ item, agentId, theme, layout, openNewChat }: AssistantMessageProps) {
+/**
+ * Mounted as a hidden composer pill icon: the pill supplies the agent scope
+ * and a DOM foothold, while the selection menu and reply modal render through
+ * portals outside the hidden pill.
+ */
+export function SelectionReply(props: SelectionReplyProps) {
+  if (props.context !== "agent") return null;
+  return <SelectionReplyInner key={`${props.host.id}:${props.agentId}`} {...props} agentId={props.agentId} />;
+}
+
+function SelectionReplyInner({
+  agentId,
+  theme,
+  layout,
+  openNewChat,
+}: SelectionReplyProps & { agentId: string }) {
   const paseo = usePaseo();
   const uid = useId();
-  const messageNativeId = `quote-reply-message-${uid}`;
-  const text = item.data.text;
-  const messageId = item.data.messageId;
+  // The web helper finds this marker by prefix and hides its pill button.
+  const markerId = `quote-reply-anchor-${uid}`;
 
-  const [selection, setSelection] = useState<MessageSelection | null>(null);
-  const [contentWidth, setContentWidth] = useState<number | null>(null);
-  const [popupWidth, setPopupWidth] = useState<number | null>(null);
+  const [selection, setSelection] = useState<NativeMessageSelection | null>(null);
+  const [menuSize, setMenuSize] = useState<{ width: number; height: number } | null>(null);
   const [open, setOpen] = useState(false);
   const [quote, setQuote] = useState("");
   const [reply, setReply] = useState("");
@@ -37,12 +45,9 @@ export function AssistantMessage({ item, agentId, theme, layout, openNewChat }: 
   const agentStatus = useAgent(agentId, (agent) => agent.status);
   const busy = agentStatus === "running";
 
-  // Only offer a new chat when the message has a stable fork checkpoint.
-  const canForkNewChat = openNewChat !== undefined && messageId !== undefined;
-
   useEffect(
-    () => observeMessageSelection(messageNativeId, setSelection),
-    [messageNativeId],
+    () => observeNativeMessageSelection(markerId, setSelection),
+    [markerId],
   );
 
   const openDialog = useCallback((quoteText: string) => {
@@ -52,25 +57,26 @@ export function AssistantMessage({ item, agentId, theme, layout, openNewChat }: 
     setOpen(true);
   }, []);
 
-  const startNewChat = useCallback(
-    (quoteText: string) => {
-      if (!canForkNewChat || !openNewChat || !messageId) return;
+  const openSelectionReply = useCallback(
+    (current: NativeMessageSelection) => {
       setSelection(null);
-      openNewChat({ agentId, messageId, quote: quoteText });
+      if (!current.isValid()) return;
+      openDialog(current.text);
     },
-    [canForkNewChat, openNewChat, messageId, agentId],
+    [openDialog],
   );
 
-  // The popup's press-in and press both fire for one pointer gesture; opening
-  // two draft screens would discard the first draft. Press-in marks the
-  // gesture handled; keyboard activation fires onPress alone, so it still works.
-  const openedSelectionRef = useRef<MessageSelection | null>(null);
-  const openSelectionNewChat = (current: MessageSelection) => {
-    // Press-in and press may both fire for one selection; keyboard remains usable on the next.
-    if (openedSelectionRef.current === current) return;
-    openedSelectionRef.current = current;
-    startNewChat(current.text);
-  };
+  const startNewChat = useCallback(
+    (current: NativeMessageSelection) => {
+      if (!openNewChat) return;
+      setSelection(null);
+      // The observer clears stale selections, but re-check at press time so a
+      // just-changed or moved row can never seed a fork draft.
+      if (!current.isValid()) return;
+      openNewChat({ agentId, messageId: current.messageId, quote: current.text });
+    },
+    [openNewChat, agentId],
+  );
 
   const submit = useCallback(async () => {
     if (sendingRef.current) return;
@@ -105,23 +111,8 @@ export function AssistantMessage({ item, agentId, theme, layout, openNewChat }: 
 
   const styles = useMemo(
     () => ({
-      actionsRow: {
-        flexDirection: "row" as const,
-        flexWrap: "wrap" as const,
-        gap: 10,
-        marginTop: 2,
-      },
-      replyRow: {
-        flexDirection: "row" as const,
-        alignItems: "center" as const,
-        gap: 4,
-        paddingVertical: 4,
-        paddingRight: 6,
-      },
-      replyLabel: { color: theme.colors.foregroundMuted, fontSize: 12 },
-      floating: {
+      menu: {
         position: "absolute" as const,
-        zIndex: 10,
         flexDirection: "row" as const,
         flexWrap: "wrap" as const,
         alignItems: "center" as const,
@@ -133,101 +124,76 @@ export function AssistantMessage({ item, agentId, theme, layout, openNewChat }: 
         borderWidth: 1,
         borderColor: theme.colors.border,
       },
-      floatingButton: {
+      menuButton: {
         flexDirection: "row" as const,
         alignItems: "center" as const,
         gap: 4,
+        paddingVertical: 2,
       },
-      floatingLabel: { color: theme.colors.foreground, fontSize: 12 },
+      menuLabel: { color: theme.colors.foreground, fontSize: 12 },
     }),
     [theme],
   );
 
-  const openSelectionReply = useCallback(
-    (current: MessageSelection) => {
-      setSelection(null);
-      openDialog(current.text);
-    },
-    [openDialog],
-  );
-
-  // Keep the floating popup inside the message pane: clamp with its measured
-  // width (estimate until the first layout).
-  const estimatedPopupWidth = popupWidth ?? (canForkNewChat ? 176 : 88);
-  const floatingLeft =
+  // Clamp the menu inside the viewport with its measured size (estimate until
+  // the first layout); narrow panes wrap via maxWidth + flexWrap.
+  const menuWidth = menuSize?.width ?? 176;
+  const menuHeight = menuSize?.height ?? 30;
+  const menuLeft =
     selection === null
       ? 0
-      : Math.max(
-          0,
-          Math.min(
-            selection.left,
-            (contentWidth ?? selection.left + estimatedPopupWidth) - estimatedPopupWidth,
-          ),
-        );
+      : Math.max(8, Math.min(selection.left, selection.viewportWidth - menuWidth - 8));
+  const menuTop =
+    selection === null
+      ? 0
+      : Math.max(8, Math.min(selection.top, selection.viewportHeight - menuHeight - 8));
 
   return (
-    <View onLayout={(event) => setContentWidth(event.nativeEvent.layout.width)}>
-      <View nativeID={messageNativeId}>
-        <Markdown>{text}</Markdown>
-      </View>
-      <View style={styles.actionsRow}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Reply to this message"
-          onPress={() => openDialog(text)}
-          style={styles.replyRow}
-        >
-          <Icon name="Reply" size={12} color={theme.colors.foregroundMuted} />
-          <Text style={styles.replyLabel}>Reply</Text>
-        </Pressable>
-        {canForkNewChat ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Reply to this message in a new chat"
-            onPress={() => startNewChat(text)}
-            style={styles.replyRow}
-          >
-            <Icon name="MessagesSquare" size={12} color={theme.colors.foregroundMuted} />
-            <Text style={styles.replyLabel}>Reply in new chat</Text>
-          </Pressable>
-        ) : null}
-      </View>
+    <View nativeID={markerId} style={{ width: 0, height: 0 }}>
       {selection ? (
-        <View
-          onLayout={(event) => setPopupWidth(event.nativeEvent.layout.width)}
-          style={[
-            styles.floating,
-            { top: selection.top + 6, left: floatingLeft },
-            contentWidth !== null ? { maxWidth: contentWidth } : null,
-          ]}
-        >
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Reply to the selected text"
-            // Press-in: the mousedown collapses the selection, which would
-            // unmount this button before a click could land. onPress stays as
-            // the keyboard/assistive-tech activation path; opening twice with
-            // the same quote is harmless.
-            onPressIn={() => openSelectionReply(selection)}
-            onPress={() => openSelectionReply(selection)}
-            style={styles.floatingButton}
-          >
-            <Icon name="Reply" size={12} color={theme.colors.foreground} />
-            <Text style={styles.floatingLabel}>Reply</Text>
-          </Pressable>
-          {canForkNewChat ? (
+        <RNModal transparent visible animationType="none" onRequestClose={() => setSelection(null)}>
+          <View style={{ flex: 1 }} testID="quote-reply-selection-menu">
             <Pressable
+              style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }}
               accessibilityRole="button"
-              accessibilityLabel="Reply to the selected text in a new chat"
-              onPressIn={() => openSelectionNewChat(selection)}
-              onPress={() => openSelectionNewChat(selection)}
-              style={styles.floatingButton}
+              accessibilityLabel="Dismiss reply options"
+              onPress={() => setSelection(null)}
+            />
+            <View
+              onLayout={(event) =>
+                setMenuSize({
+                  width: event.nativeEvent.layout.width,
+                  height: event.nativeEvent.layout.height,
+                })
+              }
+              style={[
+                styles.menu,
+                { top: menuTop, left: menuLeft, maxWidth: selection.viewportWidth - 16 },
+              ]}
             >
-              <Icon name="MessagesSquare" size={12} color={theme.colors.foreground} />
-              <Text style={styles.floatingLabel}>New chat</Text>
-            </Pressable>
-          ) : null}
-        </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Reply to the selected text"
+                onPress={() => openSelectionReply(selection)}
+                style={styles.menuButton}
+              >
+                <Icon name="Reply" size={12} color={theme.colors.foreground} />
+                <Text style={styles.menuLabel}>Reply</Text>
+              </Pressable>
+              {openNewChat ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Reply to the selected text in a new chat"
+                  onPress={() => startNewChat(selection)}
+                  style={styles.menuButton}
+                >
+                  <Icon name="MessagesSquare" size={12} color={theme.colors.foreground} />
+                  <Text style={styles.menuLabel}>New chat</Text>
+                </Pressable>
+              ) : null}
+            </View>
+          </View>
+        </RNModal>
       ) : null}
       <Modal title="Reply to message" open={open} onOpenChange={handleOpenChange}>
         <Modal.Content contentContainerStyle={{ padding: layout.compact ? 16 : 24 }}>

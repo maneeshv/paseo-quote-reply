@@ -1,9 +1,9 @@
 {
   "id": "quote-reply",
   "name": "Quote reply",
-  "description": "Reply to assistant messages with an editable quote in the current chat or a new chat carrying earlier conversation context.",
+  "description": "Select assistant text for floating quote replies in the current or a new chat, while preserving native message controls.",
   "media": [],
   "requirements": {
-    "paseo": ">=0.14.0 <0.15.0"
+    "paseo": ">=0.14.0 <0.14.1"
   }
 }
