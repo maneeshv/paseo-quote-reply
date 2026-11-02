@@ -1,41 +1,76 @@
 # Quote reply for Paseo
 
-Select text inside a native assistant message, release the mouse, and choose **Reply** or **New chat** in the floating menu. There are no permanent reply buttons beneath messages. Paseo keeps its own message renderer, copy controls, and **Fork chat from here** menu.
+Select text in an assistant message and choose **Reply** or **New chat** from a floating menu. Edit the quote, add your reply, and send it to the same conversation or a new chat with earlier context.
 
-- Desktop/web: edit the quote, enter your reply, then Enter sends; Shift+Enter adds a newline. IME composition does not send.
-- Running agent: **Send & steer** asks Paseo to steer. Paseo may restart the turn if steering is unavailable.
-- Failed sends keep the draft. Check the chat before retrying an uncertain send.
-- Drafts stay in memory and do not survive navigation or reload. Quote text is not put in screen URLs.
-- **New chat** carries messages and concise tool summaries through the chosen response as a text attachment, capped at 100,000 characters with omission markers. It shares workspace files and copies visible provider/model/mode/thinking/features. It omits subagent logs and hidden session state, custom system prompts, tool policies, and per-agent MCP configuration.
-- Incomplete history or a message without a matching stable checkpoint blocks new-chat creation. An uncertain creation failure blocks resubmission from that form. A navigation failure offers **Open chat** without creating another agent.
+This is a community plugin, not an official Paseo product. It preserves Paseo's native message rendering, copy controls, and **Fork chat from here** menu. There are no permanent reply buttons beneath messages.
 
-Requires Paseo **0.14.0** desktop/web. Native mobile and archived chats do not get the selection popup. This is a client-only plugin using the current host connection, with no external service.
+## Requirements
 
-The popup uses an invisible, agent-scoped composer contribution as its anchor. It only observes the matching pane's native assistant messages, rejects cross-message/ambiguous selections, and rechecks ownership at activation. Only the plugin's own button is hidden; native controls are untouched. Paseo may reserve blank composer-track space for this contribution. The DOM adapter is version-pinned and fails closed if the expected pane structure is unavailable.
+| Component | Compatibility |
+| --- | --- |
+| Paseo app and daemon | Exactly 0.14.0; manifest range `>=0.14.0 <0.14.1` |
+| Client | Desktop/web with browser text selection; local checks used macOS |
+| Development | Node.js 22.18+ and npm; `.nvmrc` and lockfile included |
 
-## Development
+Native mobile and archived chats do not receive the popup. The version-specific DOM adapter rejects ambiguous pane ownership and may leave some blank composer-track space. Other Paseo versions require an adapter review before widening compatibility. See [validation](VALIDATION.md) for what has and has not been tested.
 
-Use Node 22.18+ for the tests' native TypeScript support.
+## Install
+
+Paseo plugins are trusted, unsandboxed code. Review the source before enabling plugins in **Settings → Plugins**, and only use a daemon you trust.
+
+Run these commands on the daemon host:
 
 ```sh
-npm ci
+git clone https://github.com/maneeshv/paseo-quote-reply.git
+cd paseo-quote-reply
+npm ci --ignore-scripts
 npm run typecheck
 npm test
-```
-
-After enabling trusted plugins in Paseo Settings, install this directory:
-
-```sh
-paseo plugin install /absolute/path/to/paseo-quote-reply
+paseo plugin install "$PWD" --id quote-reply
 paseo plugin ls quote-reply
 ```
 
-After editing, typecheck and use `paseo plugin reload quote-reply`. No daemon restart is needed. Disable it with `paseo plugin disable quote-reply` to remove the selection popup; native message rendering is always preserved.
+Keep the cloned directory in place: Paseo loads this local path. Run `npm ci --ignore-scripts` before installation: Paseo 0.14.0 needs the local dependency tree to resolve type imports during compilation. Paseo supplies the runtime modules. Distribution is through GitHub, not npm or the Paseo registry.
 
-## Verification
+## Use
 
-Automated tests cover quote formatting, IME/Enter handling, split-pane selection ownership, ambiguous scopes, stale DOM rows, popup cleanup, native-row preservation, registration lifecycle, fork boundaries, history truncation, configuration copying, and duplicate prevention across remounts.
+1. Drag to select text within one assistant message and release the mouse.
+2. Choose **Reply** for the same agent or **New chat** for a new conversation.
+3. Edit the quote, enter your reply, and submit. Enter sends; Shift+Enter adds a newline. IME composition does not send.
 
-An isolated check against Paseo 0.14.0's actual bundled projection and fork resolver reproduces the previous replacement-row regression and verifies that preserving native assistant rows restores their fork boundary. The installed compiler builds the client with no server bundle.
+For a running agent, **Send & steer** requests steering; Paseo may restart the turn if steering is unavailable. Failed sends keep the draft. If the outcome is uncertain, check the chat before retrying.
 
-The earlier live fork test verified attached context, model/mode/workspace preservation, and unchanged source history. The corrected selection-only UI still needs desktop click-through verification, including outside-click dismissal, both reply actions, native fork/copy controls, split panes, and compact/dark layouts.
+**New chat** includes messages and concise tool summaries through the selected response as a text attachment, capped at 100,000 characters with omission markers. It shares the source workspace files and copies visible provider/model/mode/thinking/features. It does not clone hidden session state, custom system prompts, tool policies, per-agent MCP configuration, or subagent logs. The source conversation stays unchanged.
+
+Incomplete history or a missing stable checkpoint blocks creation. An uncertain creation failure blocks resubmission from that form; check the workspace before starting another. If creation succeeds but navigation fails, **Open chat** retries navigation without creating another agent.
+
+## Data and permissions
+
+The client observes agent metadata to scope the popup to the correct chat. Reply sends the quote and your text through the current Paseo host to the configured agent provider. New chat also reads the source timeline and includes the bounded history attachment in the new agent's prompt. Normal provider permissions, usage costs, and retention policies apply.
+
+This plugin adds no backend process, telemetry endpoint, or separate external service. That does not mean submitted conversations stay on your machine. Drafts are held in memory and are not durable across navigation or reload; quote text is not placed in screen URLs. Do not submit information you cannot share with the configured provider.
+
+## Updates and troubleshooting
+
+After pulling changes, rerun the installation checks above, then reload:
+
+```sh
+paseo plugin reload quote-reply
+```
+
+No daemon restart is needed. To disable the popup:
+
+```sh
+paseo plugin disable quote-reply
+```
+
+- **No popup:** check both Paseo versions, global plugin enablement, and `paseo plugin ls quote-reply`. Select within one assistant message in a non-archived chat. Ambiguous or stale selections are rejected.
+- **New chat unavailable:** let the source history settle and select the response again. Creation requires a stable message checkpoint and complete projected history.
+- **Uncertain submission:** check the conversation or workspace chat list before trying again; the plugin does not automatically retry sends.
+- **Load failure:** inspect `paseo plugin logs quote-reply`. Redact private paths, prompts, and credentials before sharing diagnostics.
+
+## Contribute and license
+
+See [CONTRIBUTING.md](CONTRIBUTING.md), [AGENTS.md](AGENTS.md), and the [code of conduct](CODE_OF_CONDUCT.md). Report vulnerabilities privately using [SECURITY.md](SECURITY.md).
+
+Licensed under the [MIT License](LICENSE).
