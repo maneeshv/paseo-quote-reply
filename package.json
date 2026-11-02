@@ -32,5 +32,19 @@
     "react-native": "0.81.5",
     "typescript": "^5.9.3",
     "zod": "^4.4.3"
+  },
+  "description": "Reply to selected assistant text in Paseo, in the current chat or a new chat with context.",
+  "license": "MIT",
+  "author": "Maneesh (maneeshv)",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/maneeshv/paseo-quote-reply.git"
+  },
+  "homepage": "https://github.com/maneeshv/paseo-quote-reply#readme",
+  "bugs": {
+    "url": "https://github.com/maneeshv/paseo-quote-reply/issues"
+  },
+  "engines": {
+    "node": ">=22.18.0"
   }
 }
