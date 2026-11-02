@@ -1,23 +1,32 @@
 import { useAgent, usePaseo, type PluginTimelineItemProps } from "@getpaseo/plugin/client";
-import { Icon, Markdown, Modal, TextInput } from "@getpaseo/plugin/client/ui";
+import { Icon, Markdown, Modal } from "@getpaseo/plugin/client/ui";
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { Platform, Pressable, Text, View } from "react-native";
-import { observeMessageSelection, observeReplySubmitKey, type MessageSelection } from "@/client/web";
+import { Pressable, Text, View } from "react-native";
+import { observeMessageSelection, type MessageSelection } from "@/client/web";
+import type { ReplyDraft } from "@/client/new-chat";
+import { ReplyForm } from "@/client/reply-form";
 import { formatQuoteReply } from "@/shared/quote";
 
 export interface AssistantMessageData {
   text: string;
+  messageId?: string;
 }
 
-export function AssistantMessage({ item, agentId, theme, layout }: PluginTimelineItemProps<AssistantMessageData>) {
+export type AssistantMessageProps = PluginTimelineItemProps<AssistantMessageData> & {
+  /** Opens the plugin's new-chat reply screen. Injected by the client entry. */
+  openNewChat?: (draft: ReplyDraft) => void;
+};
+
+export function AssistantMessage({ item, agentId, theme, layout, openNewChat }: AssistantMessageProps) {
   const paseo = usePaseo();
   const uid = useId();
   const messageNativeId = `quote-reply-message-${uid}`;
-  const inputNativeId = `quote-reply-input-${uid}`;
   const text = item.data.text;
+  const messageId = item.data.messageId;
 
   const [selection, setSelection] = useState<MessageSelection | null>(null);
   const [contentWidth, setContentWidth] = useState<number | null>(null);
+  const [popupWidth, setPopupWidth] = useState<number | null>(null);
   const [open, setOpen] = useState(false);
   const [quote, setQuote] = useState("");
   const [reply, setReply] = useState("");
@@ -27,6 +36,9 @@ export function AssistantMessage({ item, agentId, theme, layout }: PluginTimelin
 
   const agentStatus = useAgent(agentId, (agent) => agent.status);
   const busy = agentStatus === "running";
+
+  // Only offer a new chat when the message has a stable fork checkpoint.
+  const canForkNewChat = openNewChat !== undefined && messageId !== undefined;
 
   useEffect(
     () => observeMessageSelection(messageNativeId, setSelection),
@@ -39,6 +51,26 @@ export function AssistantMessage({ item, agentId, theme, layout }: PluginTimelin
     setError(null);
     setOpen(true);
   }, []);
+
+  const startNewChat = useCallback(
+    (quoteText: string) => {
+      if (!canForkNewChat || !openNewChat || !messageId) return;
+      setSelection(null);
+      openNewChat({ agentId, messageId, quote: quoteText });
+    },
+    [canForkNewChat, openNewChat, messageId, agentId],
+  );
+
+  // The popup's press-in and press both fire for one pointer gesture; opening
+  // two draft screens would discard the first draft. Press-in marks the
+  // gesture handled; keyboard activation fires onPress alone, so it still works.
+  const openedSelectionRef = useRef<MessageSelection | null>(null);
+  const openSelectionNewChat = (current: MessageSelection) => {
+    // Press-in and press may both fire for one selection; keyboard remains usable on the next.
+    if (openedSelectionRef.current === current) return;
+    openedSelectionRef.current = current;
+    startNewChat(current.text);
+  };
 
   const submit = useCallback(async () => {
     if (sendingRef.current) return;
@@ -65,18 +97,6 @@ export function AssistantMessage({ item, agentId, theme, layout }: PluginTimelin
     }
   }, [agentId, paseo, quote, reply]);
 
-  const submitRef = useRef(submit);
-  useEffect(() => {
-    submitRef.current = submit;
-  }, [submit]);
-
-  useEffect(() => {
-    if (!open) return;
-    return observeReplySubmitKey(inputNativeId, () => {
-      void submitRef.current();
-    });
-  }, [open, inputNativeId]);
-
   const handleOpenChange = useCallback((next: boolean) => {
     // Dismissing mid-send would hide an uncertain outcome; keep it open.
     if (!next && sendingRef.current) return;
@@ -85,22 +105,27 @@ export function AssistantMessage({ item, agentId, theme, layout }: PluginTimelin
 
   const styles = useMemo(
     () => ({
+      actionsRow: {
+        flexDirection: "row" as const,
+        flexWrap: "wrap" as const,
+        gap: 10,
+        marginTop: 2,
+      },
       replyRow: {
         flexDirection: "row" as const,
         alignItems: "center" as const,
         gap: 4,
-        alignSelf: "flex-start" as const,
         paddingVertical: 4,
         paddingRight: 6,
-        marginTop: 2,
       },
       replyLabel: { color: theme.colors.foregroundMuted, fontSize: 12 },
       floating: {
         position: "absolute" as const,
         zIndex: 10,
         flexDirection: "row" as const,
+        flexWrap: "wrap" as const,
         alignItems: "center" as const,
-        gap: 4,
+        gap: 10,
         paddingVertical: 4,
         paddingHorizontal: 8,
         borderRadius: 6,
@@ -108,28 +133,12 @@ export function AssistantMessage({ item, agentId, theme, layout }: PluginTimelin
         borderWidth: 1,
         borderColor: theme.colors.border,
       },
+      floatingButton: {
+        flexDirection: "row" as const,
+        alignItems: "center" as const,
+        gap: 4,
+      },
       floatingLabel: { color: theme.colors.foreground, fontSize: 12 },
-      fieldLabel: { color: theme.colors.foregroundMuted, fontSize: 12 },
-      input: {
-        color: theme.colors.foreground,
-        backgroundColor: theme.colors.surface1,
-        borderWidth: 1,
-        borderColor: theme.colors.border,
-        borderRadius: 8,
-        padding: 10,
-        fontSize: 13,
-      },
-      hint: { color: theme.colors.foregroundMuted, fontSize: 12 },
-      error: { color: theme.colors.statusDanger, fontSize: 12 },
-      send: {
-        alignSelf: "flex-end" as const,
-        paddingVertical: 8,
-        paddingHorizontal: 14,
-        borderRadius: 8,
-        backgroundColor: theme.colors.accent,
-      },
-      sendPending: { opacity: 0.6 },
-      sendLabel: { color: theme.colors.accentForeground, fontSize: 13 },
     }),
     [theme],
   );
@@ -142,85 +151,108 @@ export function AssistantMessage({ item, agentId, theme, layout }: PluginTimelin
     [openDialog],
   );
 
-  // Keep the floating button inside the message pane. 88 ≈ its rendered width.
+  // Keep the floating popup inside the message pane: clamp with its measured
+  // width (estimate until the first layout).
+  const estimatedPopupWidth = popupWidth ?? (canForkNewChat ? 176 : 88);
   const floatingLeft =
     selection === null
       ? 0
-      : Math.max(0, Math.min(selection.left, (contentWidth ?? selection.left + 88) - 88));
+      : Math.max(
+          0,
+          Math.min(
+            selection.left,
+            (contentWidth ?? selection.left + estimatedPopupWidth) - estimatedPopupWidth,
+          ),
+        );
 
   return (
     <View onLayout={(event) => setContentWidth(event.nativeEvent.layout.width)}>
       <View nativeID={messageNativeId}>
         <Markdown>{text}</Markdown>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Reply to this message"
-        onPress={() => openDialog(text)}
-        style={styles.replyRow}
-      >
-        <Icon name="Reply" size={12} color={theme.colors.foregroundMuted} />
-        <Text style={styles.replyLabel}>Reply</Text>
-      </Pressable>
-      {selection ? (
+      <View style={styles.actionsRow}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Reply to the selected text"
-          // Press-in: the mousedown collapses the selection, which would
-          // unmount this button before a click could land. onPress stays as
-          // the keyboard/assistive-tech activation path; opening twice with
-          // the same quote is harmless.
-          onPressIn={() => openSelectionReply(selection)}
-          onPress={() => openSelectionReply(selection)}
-          style={[styles.floating, { top: selection.top + 6, left: floatingLeft }]}
+          accessibilityLabel="Reply to this message"
+          onPress={() => openDialog(text)}
+          style={styles.replyRow}
         >
-          <Icon name="Reply" size={12} color={theme.colors.foreground} />
-          <Text style={styles.floatingLabel}>Reply</Text>
+          <Icon name="Reply" size={12} color={theme.colors.foregroundMuted} />
+          <Text style={styles.replyLabel}>Reply</Text>
         </Pressable>
-      ) : null}
-      <Modal title="Reply to message" open={open} onOpenChange={handleOpenChange}>
-        <Modal.Content contentContainerStyle={{ padding: layout.compact ? 16 : 24, gap: 12 }}>
-          <Text style={styles.fieldLabel}>Quote</Text>
-          <TextInput
-            multiline
-            value={quote}
-            onChangeText={setQuote}
-            editable={!pending}
-            accessibilityLabel="Quoted text"
-            style={[styles.input, { minHeight: 44, maxHeight: 140 }]}
-          />
-          <Text style={styles.fieldLabel}>Reply</Text>
-          <TextInput
-            multiline
-            autoFocus
-            nativeID={inputNativeId}
-            value={reply}
-            onChangeText={setReply}
-            editable={!pending}
-            accessibilityLabel="Your reply"
-            placeholder="Write a reply…"
-            placeholderTextColor={theme.colors.foregroundMuted}
-            style={[styles.input, { minHeight: 80, maxHeight: 180 }]}
-          />
-          {Platform.OS === "web" ? <Text style={styles.hint}>Enter to send · Shift+Enter for a new line</Text> : null}
-          {busy ? (
-            <Text style={styles.hint}>
-              The agent is working. Your reply steers the current turn; if steering is
-              unavailable, Paseo may restart the turn.
-            </Text>
-          ) : null}
-          {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
+        {canForkNewChat ? (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={busy ? "Send and steer the running turn" : "Send reply"}
-            disabled={pending}
-            onPress={() => void submit()}
-            style={[styles.send, pending && styles.sendPending]}
+            accessibilityLabel="Reply to this message in a new chat"
+            onPress={() => startNewChat(text)}
+            style={styles.replyRow}
           >
-            <Text style={styles.sendLabel}>
-              {pending ? "Sending…" : busy ? "Send & steer" : "Send reply"}
-            </Text>
+            <Icon name="MessagesSquare" size={12} color={theme.colors.foregroundMuted} />
+            <Text style={styles.replyLabel}>Reply in new chat</Text>
           </Pressable>
+        ) : null}
+      </View>
+      {selection ? (
+        <View
+          onLayout={(event) => setPopupWidth(event.nativeEvent.layout.width)}
+          style={[
+            styles.floating,
+            { top: selection.top + 6, left: floatingLeft },
+            contentWidth !== null ? { maxWidth: contentWidth } : null,
+          ]}
+        >
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Reply to the selected text"
+            // Press-in: the mousedown collapses the selection, which would
+            // unmount this button before a click could land. onPress stays as
+            // the keyboard/assistive-tech activation path; opening twice with
+            // the same quote is harmless.
+            onPressIn={() => openSelectionReply(selection)}
+            onPress={() => openSelectionReply(selection)}
+            style={styles.floatingButton}
+          >
+            <Icon name="Reply" size={12} color={theme.colors.foreground} />
+            <Text style={styles.floatingLabel}>Reply</Text>
+          </Pressable>
+          {canForkNewChat ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Reply to the selected text in a new chat"
+              onPressIn={() => openSelectionNewChat(selection)}
+              onPress={() => openSelectionNewChat(selection)}
+              style={styles.floatingButton}
+            >
+              <Icon name="MessagesSquare" size={12} color={theme.colors.foreground} />
+              <Text style={styles.floatingLabel}>New chat</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+      <Modal title="Reply to message" open={open} onOpenChange={handleOpenChange}>
+        <Modal.Content contentContainerStyle={{ padding: layout.compact ? 16 : 24 }}>
+          <ReplyForm
+            theme={theme}
+            quote={quote}
+            onQuoteChange={setQuote}
+            reply={reply}
+            onReplyChange={setReply}
+            editable={!pending}
+            pending={pending}
+            error={error}
+            hints={
+              busy
+                ? [
+                    "The agent is working. Your reply steers the current turn; if steering is unavailable, Paseo may restart the turn.",
+                  ]
+                : undefined
+            }
+            sendLabel={busy ? "Send & steer" : "Send reply"}
+            pendingLabel="Sending…"
+            sendAccessibilityLabel={busy ? "Send and steer the running turn" : "Send reply"}
+            sendDisabled={pending}
+            onSubmit={() => void submit()}
+          />
         </Modal.Content>
       </Modal>
     </View>

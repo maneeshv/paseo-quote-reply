@@ -4,7 +4,8 @@
   "type": "module",
   "version": "0.0.0",
   "imports": {
-    "#quote": "./shared/quote.ts"
+    "#quote": "./shared/quote.ts",
+    "#fork": "./shared/fork.ts"
   },
   "files": [
     "paseo-plugin.json",
@@ -24,6 +25,7 @@
   },
   "devDependencies": {
     "@getpaseo/plugin": "0.14.0",
+    "@getpaseo/protocol": "0.14.0",
     "@tanstack/react-query": "^5.90.11",
     "@types/react": "~19.2.0",
     "react": "19.1.0",
