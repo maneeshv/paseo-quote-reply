@@ -1,44 +1,26 @@
-import type { PluginClientContext } from "@getpaseo/plugin/client";
-import { z } from "zod";
-import { AssistantMessage, type AssistantMessageProps } from "@/client/assistant-reply";
-import { NEW_CHAT_SCREEN_ID, NewChatReplyScreen, openNewChatReply } from "@/client/new-chat";
-
-const KIND = "assistant-reply";
+import type { PluginButtonIconProps, PluginClientContext } from "@getpaseo/plugin/client";
+import { Platform } from "react-native";
+import { SelectionReply } from "@/client/assistant-reply";
+import { NEW_CHAT_SCREEN_ID, NewChatReplyScreen, openNewChatReply, type ReplyDraft } from "@/client/new-chat";
+import { registerSelectionReplies } from "@/client/register-selection";
 
 export default function contribute(client: PluginClientContext) {
-  client.addScreen({
+  const removeScreen = client.addScreen({
     id: NEW_CHAT_SCREEN_ID,
     title: "Reply in new chat",
     Component: NewChatReplyScreen,
   });
-  client.addTimelineTransformer({
-    id: "assistant-reply",
-    query: { itemType: "assistant_message" },
-    transform({ item, phase }) {
-      // Claim only completed messages so streaming stays native.
-      if (phase !== "complete" || item.text.length === 0) return undefined;
-      return {
-        items: [
-          {
-            type: "plugin",
-            kind: KIND,
-            version: 1,
-            data: { text: item.text, ...(item.messageId ? { messageId: item.messageId } : {}) },
-          },
-        ],
-      };
-    },
-  });
-  client.addTimelineRenderer({
-    kind: KIND,
-    version: 1,
-    schema: z.object({ text: z.string(), messageId: z.string().optional() }),
-    Component: (props: Omit<AssistantMessageProps, "openNewChat">) => (
-      <AssistantMessage
+  // This selection bridge relies on Paseo's web DOM, including its desktop app.
+  const removeSelection = Platform.OS === "web"
+    ? registerSelectionReplies(client, (props: PluginButtonIconProps) => (
+      <SelectionReply
         {...props}
-        openNewChat={(draft) => openNewChatReply((input) => client.openScreen(input), draft)}
+        openNewChat={(draft: ReplyDraft) => openNewChatReply((input) => client.openScreen(input), draft)}
       />
-    ),
-  });
-  return () => {};
+    ))
+    : () => {};
+  return () => {
+    removeSelection();
+    removeScreen();
+  };
 }

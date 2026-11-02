@@ -1,105 +1,149 @@
 import { Platform } from "react-native";
-import { isSelectionInside, shouldSendOnEnter } from "@/shared/quote";
+import { shouldSendOnEnter } from "@/shared/quote";
 
-// Browser-only selection and keyboard handling. The plugin typechecks without
-// the DOM library; declare only the structure this module actually touches.
-// Every export is gated on Platform.OS === "web" and no-ops on native.
-
-interface DomRect {
-  top: number;
-  left: number;
-  bottom: number;
-}
-
-interface DomElement {
+interface DomRect { top: number; left: number; bottom: number }
+interface DomNode { parentElement: DomElement | null; nodeType?: number }
+interface DomElement extends DomNode {
+  isConnected: boolean;
+  textContent: string | null;
+  style: { display: string };
   contains(node: unknown): boolean;
-  getBoundingClientRect(): DomRect;
+  closest(selector: string): DomElement | null;
+  querySelectorAll(selector: string): ArrayLike<DomElement>;
+  getAttribute(name: string): string | null;
 }
-
 interface DomKeyboardEvent {
   key: string;
   shiftKey: boolean;
   isComposing?: boolean;
   keyCode?: number;
-  target: { id?: string } | null;
+  target: (DomNode & { id?: string }) | null;
   preventDefault(): void;
   stopPropagation(): void;
 }
-
 interface DomSelection {
   isCollapsed: boolean;
   rangeCount: number;
-  anchorNode: unknown;
-  focusNode: unknown;
+  anchorNode: DomNode | null;
+  focusNode: DomNode | null;
   getRangeAt(index: number): { getBoundingClientRect(): DomRect };
   toString(): string;
 }
-
 declare const document: {
+  body: DomElement;
   getElementById(id: string): DomElement | null;
   getSelection(): DomSelection | null;
   addEventListener(type: string, listener: (event: DomKeyboardEvent) => void, capture?: boolean): void;
   removeEventListener(type: string, listener: (event: DomKeyboardEvent) => void, capture?: boolean): void;
 };
-
 declare const window: {
+  innerWidth: number;
+  innerHeight: number;
   addEventListener(type: string, listener: () => void, capture?: boolean): void;
   removeEventListener(type: string, listener: () => void, capture?: boolean): void;
 };
+declare const MutationObserver: {
+  new(callback: () => void): {
+    observe(element: DomElement, options: { childList: boolean; subtree: boolean; characterData: boolean; attributes: boolean; attributeFilter: string[] }): void;
+    disconnect(): void;
+  };
+};
 
-export interface MessageSelection {
+export interface NativeMessageSelection {
   text: string;
-  /** Offsets relative to the message content element's top-left corner. */
+  messageId: string;
   top: number;
   left: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  isValid(): boolean;
 }
 
-/**
- * Watches the browser selection for one mounted message. Reports a selection
- * only when both endpoints sit inside that message's own content element
- * (found by its nativeID); reports null when the selection collapses, moves
- * to another message, or the page scrolls or resizes (the rect goes stale).
- */
-export function observeMessageSelection(
-  nativeId: string,
-  onChange: (selection: MessageSelection | null) => void,
+const CHAT = '[data-testid="agent-chat-scroll"]';
+const ASSISTANT = '[data-testid="assistant-message"]';
+const ANCHOR = '[id^="quote-reply-anchor-"]';
+const MENU = '[data-testid="quote-reply-selection-menu"]';
+const elementOf = (node: DomNode | null) => node?.nodeType === 1 ? node as DomElement : node?.parentElement ?? null;
+
+/** Observe native messages without replacing them or changing their action controls. */
+export function observeNativeMessageSelection(
+  markerId: string,
+  onChange: (selection: NativeMessageSelection | null) => void,
 ): () => void {
   if (Platform.OS !== "web") return () => {};
-  const update = () => {
-    const element = document.getElementById(nativeId);
-    const selection = document.getSelection();
-    if (
-      !element ||
-      !selection ||
-      selection.isCollapsed ||
-      selection.rangeCount === 0 ||
-      !isSelectionInside(element, selection.anchorNode, selection.focusNode)
-    ) {
-      onChange(null);
-      return;
+  const marker = document.getElementById(markerId);
+  const button = marker?.closest('[role="button"]');
+  if (!marker || !button || !button.contains(marker)) return () => {};
+  const oldDisplay = button.style.display;
+  // Hide only our own registered pill; its mounted icon supplies the exact agent context.
+  button.style.display = "none";
+
+  const scope = () => {
+    if (!marker.isConnected || document.getElementById(markerId) !== marker) return null;
+    // shortcut: pinned Paseo 0.14 DOM markers; fail closed until adapted if the pane structure changes.
+    for (let node = button.parentElement; node && node !== document.body; node = node.parentElement) {
+      const chats = node.querySelectorAll(CHAT);
+      const anchors = node.querySelectorAll(ANCHOR);
+      if (chats.length > 1 || anchors.length > 1) return null;
+      if (chats.length === 1 && anchors.length === 1 && anchors[0] === marker) {
+        return { pane: node, chat: chats[0]! };
+      }
     }
-    const text = selection.toString();
-    if (!text.trim()) {
-      onChange(null);
-      return;
-    }
-    const rect = selection.getRangeAt(0).getBoundingClientRect();
-    const host = element.getBoundingClientRect();
-    onChange({
-      text,
-      top: rect.bottom - host.top,
-      left: Math.max(0, rect.left - host.left),
-    });
+    return null;
   };
-  const clear = () => onChange(null);
-  document.addEventListener("selectionchange", update);
-  // Capture phase so the timeline's inner scroller also clears the stale rect.
+
+  let current: NativeMessageSelection | null = null;
+  const observer = new MutationObserver(() => {
+    if (current && !current.isValid()) clear();
+  });
+  const clear = () => {
+    current = null;
+    observer.disconnect();
+    onChange(null);
+  };
+  const update = (event: DomKeyboardEvent) => {
+    const target = elementOf(event.target);
+    if (target?.closest(MENU) || target?.closest('input, textarea, [contenteditable="true"], [role="dialog"]')) return;
+    const selected = document.getSelection();
+    const owner = scope();
+    const assistant = elementOf(selected?.anchorNode ?? null)?.closest(ASSISTANT);
+    const row = assistant?.closest('[data-message-id]');
+    const messageId = row?.getAttribute('data-message-id');
+    if (!owner || !selected || selected.isCollapsed || selected.rangeCount === 0 ||
+        !assistant || !row || !messageId || !owner.chat.contains(assistant) ||
+        !assistant.contains(selected.anchorNode) || !assistant.contains(selected.focusNode) ||
+        !selected.toString().trim()) {
+      clear();
+      return;
+    }
+    const content = assistant.textContent;
+    const rect = selected.getRangeAt(0).getBoundingClientRect();
+    const isValid = () => {
+      const live = scope();
+      return live?.pane === owner.pane && live.chat === owner.chat && row.isConnected &&
+        owner.chat.contains(assistant) && assistant.textContent === content &&
+        row.getAttribute('data-message-id') === messageId;
+    };
+    current = {
+      text: selected.toString(), messageId, top: rect.bottom + 6, left: rect.left,
+      viewportWidth: window.innerWidth, viewportHeight: window.innerHeight, isValid,
+    };
+    observer.disconnect();
+    observer.observe(owner.pane, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['data-message-id'] });
+    onChange(current);
+  };
+  // Wait until selection finishes so mounting the popup cannot interrupt a drag.
+  document.addEventListener("pointerup", update);
+  document.addEventListener("keyup", update);
   window.addEventListener("scroll", clear, true);
   window.addEventListener("resize", clear);
   return () => {
-    document.removeEventListener("selectionchange", update);
+    observer.disconnect();
+    document.removeEventListener("pointerup", update);
+    document.removeEventListener("keyup", update);
     window.removeEventListener("scroll", clear, true);
     window.removeEventListener("resize", clear);
+    if (button.style.display === "none") button.style.display = oldDisplay;
   };
 }
 
