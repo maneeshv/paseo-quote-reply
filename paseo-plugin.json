@@ -1,0 +1,9 @@
+{
+  "id": "quote-reply",
+  "name": "Quote reply",
+  "description": "Reply to assistant messages with an editable quoted excerpt, sent to the same chat with Paseo's steer behavior.",
+  "media": [],
+  "requirements": {
+    "paseo": ">=0.14.0 <0.15.0"
+  }
+}
