@@ -1,5 +1,14 @@
 # Validation
 
+## Hidden pill tooltip and dependency pins
+
+Checked on 2026-11-03 on macOS with Paseo 0.14.0 and Node.js 25.6.1:
+
+- Cause: Paseo 0.14.0 wraps each composer pill in a hover/focus tooltip. The selection menu and reply dialog are React portals rendered by the hidden pill, so React enter and focus events reached the pill and placed "Reply to selected text" at its zero-size rect, over the macOS window controls. Confirmed by reading the installed app bundle.
+- Fix: pointer boundary events crossing into or out of those portals are dropped before React sees them, and focus events stop at the plugin's root view. A regression test covers the crossing rules and listener cleanup.
+- Dependencies: `react-native` 0.88.1 (from a dependabot bump) required `react` ^19.3.0, so `npm ci` failed with ERESOLVE. Pinned `react` 19.2.3 and `react-native` 0.86.3. `npm ci --ignore-scripts` succeeds without flags, typechecking and all 38 tests pass, and `npm audit` reports 0 findings. Node.js 22.18.0 was not re-run.
+- Live: the plugin was reloaded on the user's authorized installation, and the user confirmed the stray tooltip no longer appears when the selection menu shows. Keyboard focus in the reply dialog, split panes, compact layouts, and native fork/copy controls were not separately re-checked for this change.
+
 ## Open-source preparation checks
 
 Checked on 2026-11-02 on macOS, against unchanged runtime source from commit `9c6351d`:
