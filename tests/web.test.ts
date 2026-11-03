@@ -302,6 +302,38 @@ test("scroll, resize and cleanup clear observers and restore only the plugin but
   assert.ok(h.observers.every((observer) => !observer.active));
 });
 
+test("pointer crossings into portals the hidden pill renders never reach React", () => {
+  const h = harness();
+  const dispose = h.observe();
+  const fiberOf = (stateNode: unknown, parent: unknown = null) => ({ stateNode, return: parent });
+  const tag = (element: Element, fiber: unknown) => Object.assign(element, { "__reactFiber$test": fiber });
+  const appFiber = fiberOf(h.body);
+  const pillFiber = fiberOf(h.first.button, appFiber);
+  // React-rendered under the pill, but DOM-mounted elsewhere like Modal/createPortal output.
+  const portal = h.body.append(new Element({ "data-testid": "quote-reply-selection-menu" }));
+  tag(portal, fiberOf(portal, fiberOf("portal", pillFiber)));
+  const portalChild = portal.append(new Element());
+  tag(h.first.assistant, fiberOf(h.first.assistant, appFiber));
+  tag(h.second.button, fiberOf(h.second.button, appFiber));
+  const crossings: Array<[Node | null, Node | null, boolean]> = [
+    [h.first.assistant, portal, true],
+    [portalChild, h.first.assistant, true],
+    [portal, null, true],
+    [portal, portalChild, false],
+    [h.first.assistant, h.second.button, false],
+    [h.first.textNode, null, false],
+  ];
+  for (const [index, [target, relatedTarget, blocked]] of crossings.entries()) {
+    for (const type of ["pointerover", "pointerout", "mouseover", "mouseout"]) {
+      let stopped = false;
+      h.windowEvents.emit(type, { target, relatedTarget, stopPropagation: () => { stopped = true; } });
+      assert.equal(stopped, blocked, `${type} crossing ${index}`);
+    }
+  }
+  dispose();
+  assert.equal(h.windowEvents.listeners.size, 0);
+});
+
 test("missing marker or button fails without mutating other controls or registering listeners", () => {
   for (const missing of ["marker", "button"]) {
     const h = harness();

@@ -21,6 +21,12 @@ interface DomKeyboardEvent {
   preventDefault(): void;
   stopPropagation(): void;
 }
+interface DomBoundaryEvent {
+  target: DomNode | null;
+  relatedTarget: DomNode | null;
+  stopPropagation(): void;
+}
+interface ReactFiber { stateNode: unknown; return: ReactFiber | null }
 interface DomSelection {
   isCollapsed: boolean;
   rangeCount: number;
@@ -39,8 +45,8 @@ declare const document: {
 declare const window: {
   innerWidth: number;
   innerHeight: number;
-  addEventListener(type: string, listener: () => void, capture?: boolean): void;
-  removeEventListener(type: string, listener: () => void, capture?: boolean): void;
+  addEventListener(type: string, listener: (event: DomBoundaryEvent) => void, capture?: boolean): void;
+  removeEventListener(type: string, listener: (event: DomBoundaryEvent) => void, capture?: boolean): void;
 };
 declare const MutationObserver: {
   new(callback: () => void): {
@@ -63,7 +69,23 @@ const CHAT = '[data-testid="agent-chat-scroll"]';
 const ASSISTANT = '[data-testid="assistant-message"]';
 const ANCHOR = '[id^="quote-reply-anchor-"]';
 const MENU = '[data-testid="quote-reply-selection-menu"]';
+const BOUNDARY_EVENTS = ["pointerover", "pointerout", "mouseover", "mouseout"];
 const elementOf = (node: DomNode | null) => node?.nodeType === 1 ? node as DomElement : node?.parentElement ?? null;
+
+/** True when React renders `node` beneath `owner`, including through portals mounted elsewhere in the DOM. */
+function isReactDescendant(node: DomNode | null, owner: DomElement): boolean {
+  for (let element = elementOf(node); element; element = element.parentElement) {
+    const fields = element as unknown as Record<string, ReactFiber | undefined>;
+    const key = Object.keys(fields).find((name) => name.startsWith("__reactFiber$"));
+    if (!key) continue;
+    // ponytail: walks to the root per crossing; cache per element in a WeakMap if hover profiling shows cost.
+    for (let fiber: ReactFiber | null | undefined = fields[key]; fiber; fiber = fiber.return) {
+      if (fiber.stateNode === owner) return true;
+    }
+    return false;
+  }
+  return false;
+}
 
 /** Observe native messages without replacing them or changing their action controls. */
 export function observeNativeMessageSelection(
@@ -77,6 +99,15 @@ export function observeNativeMessageSelection(
   const oldDisplay = button.style.display;
   // Hide only our own registered pill; its mounted icon supplies the exact agent context.
   button.style.display = "none";
+  // Paseo wraps the pill in a hover tooltip, and React dispatches enter events along the React tree,
+  // so hovering a portal the pill renders (selection menu, reply dialog) would "enter" the hidden pill
+  // and pin "Reply to selected text" at its 0,0 rect over the window controls. Drop pointer crossings
+  // into or out of those portals before React's root listeners see them.
+  const isolatePortals = (event: DomBoundaryEvent) => {
+    if (isReactDescendant(event.target, button) !== isReactDescendant(event.relatedTarget, button)) {
+      event.stopPropagation();
+    }
+  };
 
   const scope = () => {
     if (!marker.isConnected || document.getElementById(markerId) !== marker) return null;
@@ -137,12 +168,14 @@ export function observeNativeMessageSelection(
   document.addEventListener("keyup", update);
   window.addEventListener("scroll", clear, true);
   window.addEventListener("resize", clear);
+  for (const type of BOUNDARY_EVENTS) window.addEventListener(type, isolatePortals, true);
   return () => {
     observer.disconnect();
     document.removeEventListener("pointerup", update);
     document.removeEventListener("keyup", update);
     window.removeEventListener("scroll", clear, true);
     window.removeEventListener("resize", clear);
+    for (const type of BOUNDARY_EVENTS) window.removeEventListener(type, isolatePortals, true);
     if (button.style.display === "none") button.style.display = oldDisplay;
   };
 }
