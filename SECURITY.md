@@ -20,6 +20,6 @@ Never attach unredacted logs, account files, access tokens, or private transcrip
 
 ## Dependency status
 
-On 2026-11-02, `npm audit` reported 12 moderate findings in the pinned React Native development dependency chain, originating from [a minimatch denial-of-service advisory](https://github.com/advisories/GHSA-g3hv-75wg-m249). No high or critical findings were reported. npm proposes changing the React Native version supplied by Paseo; do not use `npm audit fix --force` without checking host compatibility.
+On 2026-11-03, after pinning `react` 19.2.3 and `react-native` 0.86.3 (the versions Paseo 0.14.0 ships and its plugin SDK is built against), `npm audit` reported 0 findings and `minimatch` is no longer in the tree. The earlier 12 moderate findings came from [a minimatch denial-of-service advisory](https://github.com/advisories/GHSA-g3hv-75wg-m249) in the React Native 0.81.5 chain. Do not use `npm audit fix --force` without checking host compatibility.
 
 These dependencies support development checks; Paseo supplies runtime modules. The lockfile audit does not assess Paseo's own runtime dependency tree. Re-run the audit when dependencies change.
