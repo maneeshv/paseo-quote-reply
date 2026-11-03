@@ -149,7 +149,13 @@ function SelectionReplyInner({
       : Math.max(8, Math.min(selection.top, selection.viewportHeight - menuHeight - 8));
 
   return (
-    <View nativeID={markerId} style={{ width: 0, height: 0 }}>
+    <View
+      nativeID={markerId}
+      style={{ width: 0, height: 0 }}
+      // Focus bubbles out of our portals through the React tree; keep it from opening the hidden pill's tooltip.
+      onFocus={(event) => event.stopPropagation()}
+      onBlur={(event) => event.stopPropagation()}
+    >
       {selection ? (
         <RNModal transparent visible animationType="none" onRequestClose={() => setSelection(null)}>
           <View style={{ flex: 1 }} testID="quote-reply-selection-menu">
