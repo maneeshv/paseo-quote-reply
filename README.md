@@ -8,7 +8,7 @@ This is a community plugin, not an official Paseo product. It preserves Paseo's 
 
 | Component | Compatibility |
 | --- | --- |
-| Paseo app and daemon | Exactly 0.14.0; manifest range `>=0.14.0 <0.14.1` |
+| Paseo app and daemon | Exactly 0.14.0 or 0.15.0; manifest range `>=0.14.0 <0.15.1` |
 | Client | Desktop/web with browser text selection; local checks used macOS |
 | Development | Node.js 22.18+ and npm; `.nvmrc` and lockfile included |
 
@@ -30,7 +30,7 @@ paseo plugin install "$PWD" --id quote-reply
 paseo plugin ls quote-reply
 ```
 
-Keep the cloned directory in place: Paseo loads this local path. Run `npm ci --ignore-scripts` before installation: Paseo 0.14.0 needs the local dependency tree to resolve type imports during compilation. Paseo supplies the runtime modules. Distribution is through GitHub, not npm or the Paseo registry.
+Keep the cloned directory in place: Paseo loads this local path. Run `npm ci --ignore-scripts` before installation: Paseo needs the local dependency tree to resolve type imports during compilation. Paseo supplies the runtime modules. Distribution is through GitHub, not npm or the Paseo registry.
 
 ## Use
 
