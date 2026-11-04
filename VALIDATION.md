@@ -1,5 +1,14 @@
 # Validation
 
+## Paseo 0.15.0 compatibility
+
+Checked on 2026-11-04 on macOS with Paseo 0.15.0 (app and daemon) and Node.js 25.6.1. The manifest range is `>=0.14.0 <0.15.1`. It covers only the two releases whose DOM adapter has been reviewed. Patch releases are not included until reviewed.
+
+- SDK: `@getpaseo/plugin` and `@getpaseo/protocol` are pinned to 0.15.0. The `@getpaseo/plugin` client declarations and runtime are identical to 0.14.0. The only changes are server-side. In the protocol and client types this plugin uses, the only change is that `sub_agent` timeline details now have an optional `log` field, which this plugin does not read. `npm ci --ignore-scripts` succeeds, typechecking passes, and all 38 tests pass.
+- DOM adapter: compared upstream Paseo source between tags `v0.14.0` and `v0.15.0`. Nothing that the adapter depends on has changed: the chat scroll, assistant message and `data-message-id` row markers, the plugin composer pill (`plugins/buttons`), and the web tooltip portal. The only tooltip change is to its native `Modal` import. The installed 0.15.0 web bundle still contains `agent-chat-scroll`, `assistant-message`, `data-message-id` rows, and React 19.2.3 `__reactFiber$` keys. Both releases ship React 19.2.3 and React Native 0.86.3.
+- Host changes reviewed: 0.15.0 minifies client bundles (whitespace and syntax only, not identifiers), and it reinstalls plugins only when the connection client changes. Neither affects this plugin's selection listener or its cleanup.
+- Not yet established: the plugin has not been reloaded or click-tested on Paseo 0.15.0. The manual checks below still apply.
+
 ## Hidden pill tooltip and dependency pins
 
 Checked on 2026-11-03 on macOS with Paseo 0.14.0 and Node.js 25.6.1:
