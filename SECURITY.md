@@ -14,7 +14,7 @@ The plugin observes agent metadata, reads selected assistant text, sends quoted 
 
 New chats share the source workspace files. They copy only visible provider/model/mode/thinking/features; custom system prompts, tool policies, per-agent MCP configuration, and hidden provider state are not cloned. Do not assume a new chat inherits every source-agent restriction.
 
-The DOM adapter is pinned to Paseo 0.14.0 and 0.15.0 and rejects ambiguous pane ownership, cross-message selections, and stale rows. Preserve those checks and native message rendering when modifying it. Sending to a running agent requests steering, which Paseo may implement by restarting the turn. An uncertain send must not be retried automatically.
+The DOM adapter was reviewed against Paseo 0.14.0, 0.15.0, and 0.15.1. The manifest allows any later 0.x release, so the adapter must keep failing closed on unfamiliar markup. It rejects ambiguous pane ownership, cross-message selections, and stale rows. Preserve those checks and native message rendering when modifying it. Sending to a running agent requests steering, which Paseo may implement by restarting the turn. An uncertain send must not be retried automatically.
 
 Never attach unredacted logs, account files, access tokens, or private transcripts to reports. The plugin does not redact arbitrary secrets in user-submitted quotes or history.
 

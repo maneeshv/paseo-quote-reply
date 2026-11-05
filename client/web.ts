@@ -111,7 +111,7 @@ export function observeNativeMessageSelection(
 
   const scope = () => {
     if (!marker.isConnected || document.getElementById(markerId) !== marker) return null;
-    // shortcut: DOM markers checked for Paseo 0.14.0 and 0.15.0; fail closed until adapted if the pane structure changes.
+    // shortcut: DOM markers checked for Paseo 0.14.0-0.15.1; the manifest allows later 0.x, so this must fail closed if the pane structure changes.
     for (let node = button.parentElement; node && node !== document.body; node = node.parentElement) {
       const chats = node.querySelectorAll(CHAT);
       const anchors = node.querySelectorAll(ANCHOR);

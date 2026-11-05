@@ -1,5 +1,13 @@
 # Validation
 
+## Manifest range widened to `>=0.14.0 <1.0.0`
+
+Changed on 2026-11-05. Paseo 0.15.1 refused to load the plugin because the old range `>=0.14.0 <0.15.1` excluded it. The maintainer chose to allow any 0.x release from 0.14.0 instead of reviewing every patch release. Paseo checks the range with npm semver and also compares the stable core of prereleases.
+
+- Tradeoff: later releases load without an adapter review. If Paseo changes the markers the DOM adapter reads, the adapter fails closed and no popup appears. The SDK calls (`addComposerPill`, agent list/send/timeline, workspace agent creation) could also break at runtime on an unreviewed release. Each new Paseo release is no longer tracked here.
+- Paseo 0.15.1 evidence: the installed 0.15.1 web bundle still contains `agent-chat-scroll`, `assistant-message`, `data-message-id`, and `__reactFiber$`, and it ships React 19.2.3. The upstream source diff between `v0.15.0` and `v0.15.1` was not reviewed. `@getpaseo/plugin` 0.15.1 is published; the dev dependencies stay at 0.15.0.
+- Not yet established: the plugin has not been reloaded or click-tested on Paseo 0.15.1.
+
 ## Paseo 0.15.0 compatibility
 
 Checked on 2026-11-04 on macOS with Paseo 0.15.0 (app and daemon) and Node.js 25.6.1. The manifest range is `>=0.14.0 <0.15.1`. It covers only the two releases whose DOM adapter has been reviewed. Patch releases are not included until reviewed.
