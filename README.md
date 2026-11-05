@@ -8,11 +8,11 @@ This is a community plugin, not an official Paseo product. It preserves Paseo's 
 
 | Component | Compatibility |
 | --- | --- |
-| Paseo app and daemon | Exactly 0.14.0 or 0.15.0; manifest range `>=0.14.0 <0.15.1` |
+| Paseo app and daemon | Any 0.x release from 0.14.0; manifest range `>=0.14.0 <1.0.0`. Reviewed: 0.14.0, 0.15.0, 0.15.1 |
 | Client | Desktop/web with browser text selection; local checks used macOS |
 | Development | Node.js 22.18+ and npm; `.nvmrc` and lockfile included |
 
-Native mobile and archived chats do not receive the popup. The version-specific DOM adapter rejects ambiguous pane ownership and may leave some blank composer-track space. Other Paseo versions require an adapter review before widening compatibility. See [validation](VALIDATION.md) for what has and has not been tested.
+Native mobile and archived chats do not receive the popup. The version-specific DOM adapter rejects ambiguous pane ownership and may leave some blank composer-track space. The adapter reads Paseo's rendered DOM, which is not a stable API. On an unreviewed release whose markup has changed, it fails closed: no popup appears, and the rest of Paseo is unaffected. See [validation](VALIDATION.md) for what has and has not been tested.
 
 ## Install
 
@@ -64,7 +64,7 @@ No daemon restart is needed. To disable the popup:
 paseo plugin disable quote-reply
 ```
 
-- **No popup:** check both Paseo versions, global plugin enablement, and `paseo plugin ls quote-reply`. Select within one assistant message in a non-archived chat. Ambiguous or stale selections are rejected.
+- **No popup:** check the Paseo version (a newer release may have changed the DOM the adapter reads; please open an issue), global plugin enablement, and `paseo plugin ls quote-reply`. Select within one assistant message in a non-archived chat. Ambiguous or stale selections are rejected.
 - **New chat unavailable:** let the source history settle and select the response again. Creation requires a stable message checkpoint and complete projected history.
 - **Uncertain submission:** check the conversation or workspace chat list before trying again; the plugin does not automatically retry sends.
 - **Load failure:** inspect `paseo plugin logs quote-reply`. Redact private paths, prompts, and credentials before sharing diagnostics.
